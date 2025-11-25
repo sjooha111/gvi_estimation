@@ -205,12 +205,22 @@ class ReViT(nn.Module):
 
         self.norm = norm_layer(embed_dim)
 
-        self.head = TransformerBasicHead(
-            embed_dim,
-            #num_classes,
-            dropout_rate=cfg.MODEL.dropout_rate,
-            #act_func=cfg.MODEL.head_act,
-        )
+        # self.head = TransformerBasicHead(
+        #     embed_dim,
+        #     #num_classes,
+        #     dropout_rate=cfg.MODEL.dropout_rate,
+        #     #act_func=cfg.MODEL.head_act,
+        # )
+
+
+        self.head = UnifiedHead(
+          dim_in=embed_dim,
+          num_classes=cfg.MODEL.num_classes,
+          task_type=cfg.MODEL.task_type,
+          dropout_rate=cfg.MODEL.dropout_rate,
+          head_act=cfg.MODEL.head_act,
+      )
+
         if self.use_abs_pos:
             trunc_normal_(self.pos_embed, std=0.02)
         if self.cls_embed_on:
@@ -259,15 +269,66 @@ class ReViT(nn.Module):
             x, thw, attn_res = blk(x, thw, attn_res, self.alpha)
             attn_container.append(attn_res)
 
+        # x = self.norm(x)
+        # if self.cls_embed_on:
+        #     x = x[:, 0]
+        # else:
+        #     x = x.mean(1)
+
+        # x = self.head(x,gx)
+        # return x
+
+
         x = self.norm(x)
         if self.cls_embed_on:
             x = x[:, 0]
         else:
             x = x.mean(1)
 
-        x = self.head(x,gx)
-        return x
+        logits, gvi = self.head(x, gx)
+        return logits, gvi
 
+
+class UnifiedHead(nn.Module):
+    """
+    task_type:
+      - 'reg' : 회귀만 (GVI)
+      - 'cls' : 분류만 (이벤트/season 등)
+      - 'mtl' : 분류 + 회귀 멀티태스크
+    """
+    def __init__(self, dim_in, num_classes, task_type="reg", dropout_rate=0.0, head_act=None):
+        super().__init__()
+        self.task_type = task_type
+        self.dropout = nn.Dropout(dropout_rate) if dropout_rate > 0 else None
+
+        self.proj = nn.Linear(dim_in + 2, 384)   # feature + 좌표(2차원)
+        self.act = nn.GELU() if head_act is None else head_act()
+        self.dropout2 = nn.Dropout(0.2)
+
+        # 필요할 수 있는 헤드들 정의
+        if task_type in ["cls", "mtl"]:
+            self.cls_head = nn.Linear(384, num_classes)
+        else:
+            self.cls_head = None
+
+        if task_type in ["reg", "mtl"]:
+            self.reg_head = nn.Linear(384, 1)
+        else:
+            self.reg_head = None
+
+    def forward(self, x, gx):
+        # x: [B, dim_in], gx: [B, 2]
+        if self.dropout is not None:
+            x = self.dropout(x)
+
+        x = torch.cat([x, gx], dim=1)  # [B, dim_in+2]
+        x = self.proj(x)
+        x = self.act(x)
+        x = self.dropout2(x)
+
+        logits = self.cls_head(x) if self.cls_head is not None else None
+        gvi    = self.reg_head(x) if self.reg_head is not None else None
+        return logits, gvi
 
 def _prepare_mvit_configs(cfg):
     """
