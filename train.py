@@ -8,9 +8,9 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 from datetime import timedelta
-from utils.data_utils import get_loader
-from utils.scheduler import WarmupLinearSchedule, WarmupCosineSchedule
-from model.Revit import ReViT
+from gvi_estimation.utils.data_utils import get_loader
+from gvi_estimation.utils.scheduler import WarmupLinearSchedule, WarmupCosineSchedule
+from gvi_estimation.model.Revit import ReViT
 from torch.amp import autocast, GradScaler
 from torch.utils.tensorboard import SummaryWriter
 from scipy.stats import pearsonr
