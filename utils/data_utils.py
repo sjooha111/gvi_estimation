@@ -33,7 +33,7 @@ class MyDatasetPro(Dataset):
         img_path = os.path.join(self.img_dir, file_name)
 
         npz = np.load(img_path)
-        img_np = npz["combined_data"]   # ← 네가 확인해준 키 이름
+        img_np = npz["data"]   # ← 네가 확인해준 키 이름
         img = torch.tensor(img_np, dtype=torch.float32)
 
         pos = torch.tensor(self.positions[index], dtype=torch.float32)
